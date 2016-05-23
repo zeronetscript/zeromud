@@ -73,6 +73,7 @@ class ZeroChat extends ZeroFrame
           @receiveResponse(false)
         else
           @log "no my data, create new"
+          @myData={}
           @initRequest()
 
           
