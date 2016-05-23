@@ -8,7 +8,7 @@ class ZeroChat extends ZeroFrame
       @log "event site info"
       @checkUser()
 
-    @addLine "inited!"
+    @setLine "inited!"
 
   checkUser:()=>
     if @site_info.cert_user_id
@@ -23,13 +23,14 @@ class ZeroChat extends ZeroFrame
 
   renderResponse:(response)=>
     out = $('div#out')
-    out.html(response)
+    dom = $.parseHTML(response)
+    out.html($("body",dom))
 
 
-  receiveResponse:(response)=>
+  receiveResponse:(required)=>
     #todo use dbQuery
     @log "trying to get my pusher's data ",@myPusherPath
-    @cmd "fileGet", {"inner_path":@myPusherPath},(push_data)=>
+    @cmd "fileGet", {"inner_path":@myPusherPath,"required":required},(push_data)=>
 
       @log "my pusher's data #{@myPusherPath} getted"
       pushMessages=JSON.parse(push_data)
@@ -38,12 +39,11 @@ class ZeroChat extends ZeroFrame
       if !myResponse
         #server restart or I'm not logined
         #not sent any request
-        @log "I haven't sent any request to site"
+        @log "server didn't response to me yet"
         @initRequest()
       else
-        #TODO check id not continues problem (server restart while user sent )
         @log "site have my previous response"
-        @renderAppend(myResponse)
+        @renderResponse(myResponse)
 
 
   writeData:(callback)=>
@@ -61,6 +61,8 @@ class ZeroChat extends ZeroFrame
       @myPusherAuthAddress=pushMap.pusher[0]
       @myPusherPath = "data/users/#{@myPusherAuthAddress}/data.json"
 
+      @receiveResponse(false)
+
       @log "trying to get my data:",@myDataPath
 
       @cmd "fileGet", {"inner_path":@myDataPath,"required":false},(my_data)=>
@@ -69,16 +71,9 @@ class ZeroChat extends ZeroFrame
         if my_data
           @myData= JSON.parse(my_data)
           @log "my data ",@myData
-          @receiveResponse()
         else
           @log "no my data, create new"
-          @next_id=0
-          @myData= {"request":{}}
-          @writeData (res)=>
-            if res is 'ok'
-              @receiveResponse()
-            else
-              @log "error"
+          @initRequest()
 
           
 
@@ -92,7 +87,6 @@ class ZeroChat extends ZeroFrame
 
   initRequest:()=>
     @log "init request"
-    @next_id = 0
     @myData.request="www.google.com"
     @sendRequest()
 
@@ -138,7 +132,7 @@ class ZeroChat extends ZeroFrame
 
       if @site_info.event?[0] == "file_done" and
         @site_info.event[1] == "data/users/#{@myPusherAuthAddress}/data.json"
-          @receiveResponse()
+          @receiveResponse(true)
     else
       @log cmd,message
 
@@ -155,9 +149,8 @@ class ZeroChat extends ZeroFrame
 
 
 
-  addLine: (line) ->
-    messages = document.getElementById("messages")
-    messages.innerHTML = "<li>#{line}</li>"+messages.innerHTML
+  setLine: (line) ->
+    document.title=line
 
 
   # Wrapper websocket connection ready

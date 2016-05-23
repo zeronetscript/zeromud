@@ -1,6 +1,6 @@
 
 
-/* ---- /16mQo7Q449ZHkqjjqJeP7dXM3xnEuczxsr/js/lib/00-jquery.min.js ---- */
+/* ---- /157iuNRDp8x6ySz6fAamvxpv8zxE7RPsrS/js/lib/00-jquery.min.js ---- */
 
 
 /*! jQuery v2.1.3 | (c) 2005, 2014 jQuery Foundation, Inc. | jquery.org/license */
@@ -10,7 +10,7 @@
 
 
 
-/* ---- /16mQo7Q449ZHkqjjqJeP7dXM3xnEuczxsr/js/lib/ZeroFrame.coffee ---- */
+/* ---- /157iuNRDp8x6ySz6fAamvxpv8zxE7RPsrS/js/lib/ZeroFrame.coffee ---- */
 
 
 (function() {
@@ -124,7 +124,388 @@
 }).call(this);
 
 
-/* ---- /16mQo7Q449ZHkqjjqJeP7dXM3xnEuczxsr/js/utils/Class.coffee ---- */
+/* ---- /157iuNRDp8x6ySz6fAamvxpv8zxE7RPsrS/js/lib/ansi_up.js ---- */
+
+
+// ansi_up.js
+// version : 1.3.0
+// author : Dru Nelson
+// license : MIT
+// http://github.com/drudru/ansi_up
+
+(function (Date, undefined) {
+
+    var ansi_up,
+        VERSION = "1.3.0",
+
+        // check for nodeJS
+        hasModule = (typeof module !== 'undefined'),
+
+        // Normal and then Bright
+        ANSI_COLORS = [
+          [
+            { color: "0, 0, 0",        'class': "ansi-black"   },
+            { color: "187, 0, 0",      'class': "ansi-red"     },
+            { color: "0, 187, 0",      'class': "ansi-green"   },
+            { color: "187, 187, 0",    'class': "ansi-yellow"  },
+            { color: "0, 0, 187",      'class': "ansi-blue"    },
+            { color: "187, 0, 187",    'class': "ansi-magenta" },
+            { color: "0, 187, 187",    'class': "ansi-cyan"    },
+            { color: "255,255,255",    'class': "ansi-white"   }
+          ],
+          [
+            { color: "85, 85, 85",     'class': "ansi-bright-black"   },
+            { color: "255, 85, 85",    'class': "ansi-bright-red"     },
+            { color: "0, 255, 0",      'class': "ansi-bright-green"   },
+            { color: "255, 255, 85",   'class': "ansi-bright-yellow"  },
+            { color: "85, 85, 255",    'class': "ansi-bright-blue"    },
+            { color: "255, 85, 255",   'class': "ansi-bright-magenta" },
+            { color: "85, 255, 255",   'class': "ansi-bright-cyan"    },
+            { color: "255, 255, 255",  'class': "ansi-bright-white"   }
+          ]
+        ],
+
+        // 256 Colors Palette
+        PALETTE_COLORS;
+
+    function Ansi_Up() {
+      this.fg = this.bg = this.fg_truecolor = this.bg_truecolor = null;
+      this.bright = 0;
+    }
+
+    Ansi_Up.prototype.setup_palette = function() {
+      PALETTE_COLORS = [];
+      // Index 0..15 : System color
+      (function() {
+        var i, j;
+        for (i = 0; i < 2; ++i) {
+          for (j = 0; j < 8; ++j) {
+            PALETTE_COLORS.push(ANSI_COLORS[i][j]['color']);
+          }
+        }
+      })();
+
+      // Index 16..231 : RGB 6x6x6
+      // https://gist.github.com/jasonm23/2868981#file-xterm-256color-yaml
+      (function() {
+        var levels = [0, 95, 135, 175, 215, 255];
+        var format = function (r, g, b) { return levels[r] + ', ' + levels[g] + ', ' + levels[b] };
+        var r, g, b;
+        for (r = 0; r < 6; ++r) {
+          for (g = 0; g < 6; ++g) {
+            for (b = 0; b < 6; ++b) {
+              PALETTE_COLORS.push(format.call(this, r, g, b));
+            }
+          }
+        }
+      })();
+
+      // Index 232..255 : Grayscale
+      (function() {
+        var level = 8;
+        var format = function(level) { return level + ', ' + level + ', ' + level };
+        var i;
+        for (i = 0; i < 24; ++i, level += 10) {
+          PALETTE_COLORS.push(format.call(this, level));
+        }
+      })();
+    };
+
+    Ansi_Up.prototype.escape_for_html = function (txt) {
+      return txt.replace(/[&<>]/gm, function(str) {
+        if (str == "&") return "&amp;";
+        if (str == "<") return "&lt;";
+        if (str == ">") return "&gt;";
+      });
+    };
+
+    Ansi_Up.prototype.linkify = function (txt) {
+      return txt.replace(/(https?:\/\/[^\s]+)/gm, function(str) {
+        return "<a href=\"" + str + "\">" + str + "</a>";
+      });
+    };
+
+    Ansi_Up.prototype.ansi_to_html = function (txt, options) {
+      return this.process(txt, options, true);
+    };
+
+    Ansi_Up.prototype.ansi_to_text = function (txt) {
+      var options = {};
+      return this.process(txt, options, false);
+    };
+
+    Ansi_Up.prototype.process = function (txt, options, markup) {
+      var self = this;
+      var raw_text_chunks = txt.split(/\033\[/);
+      var first_chunk = raw_text_chunks.shift(); // the first chunk is not the result of the split
+
+      var color_chunks = raw_text_chunks.map(function (chunk) {
+        return self.process_chunk(chunk, options, markup);
+      });
+
+      color_chunks.unshift(first_chunk);
+
+      return color_chunks.join('');
+    };
+
+    Ansi_Up.prototype.process_chunk = function (text, options, markup) {
+
+      // Are we using classes or styles?
+      options = typeof options == 'undefined' ? {} : options;
+      var use_classes = typeof options.use_classes != 'undefined' && options.use_classes;
+      var key = use_classes ? 'class' : 'color';
+
+      // Each 'chunk' is the text after the CSI (ESC + '[') and before the next CSI/EOF.
+      //
+      // This regex matches four groups within a chunk.
+      //
+      // The first and third groups match code type.
+      // We supported only SGR command. It has empty first group and 'm' in third.
+      //
+      // The second group matches all of the number+semicolon command sequences
+      // before the 'm' (or other trailing) character.
+      // These are the graphics or SGR commands.
+      //
+      // The last group is the text (including newlines) that is colored by
+      // the other group's commands.
+      var matches = text.match(/^([!\x3c-\x3f]*)([\d;]*)([\x20-\x2c]*[\x40-\x7e])([\s\S]*)/m);
+
+      if (!matches) return text;
+
+      var orig_txt = matches[4];
+      var nums = matches[2].split(';');
+
+      // We currently support only "SGR" (Select Graphic Rendition)
+      // Simply ignore if not a SGR command.
+      if (matches[1] !== '' || matches[3] !== 'm') {
+        return orig_txt;
+      }
+
+      if (!markup) {
+        return orig_txt;
+      }
+
+      var self = this;
+
+      while (nums.length > 0) {
+        var num_str = nums.shift();
+        var num = parseInt(num_str);
+
+        if (isNaN(num) || num === 0) {
+          self.fg = self.bg = null;
+          self.bright = 0;
+        } else if (num === 1) {
+          self.bright = 1;
+        } else if (num == 39) {
+          self.fg = null;
+        } else if (num == 49) {
+          self.bg = null;
+        } else if ((num >= 30) && (num < 38)) {
+          self.fg = ANSI_COLORS[self.bright][(num % 10)][key];
+        } else if ((num >= 90) && (num < 98)) {
+          self.fg = ANSI_COLORS[1][(num % 10)][key];
+        } else if ((num >= 40) && (num < 48)) {
+          self.bg = ANSI_COLORS[0][(num % 10)][key];
+        } else if ((num >= 100) && (num < 108)) {
+          self.bg = ANSI_COLORS[1][(num % 10)][key];
+        } else if (num === 38 || num === 48) { // extend color (38=fg, 48=bg)
+          (function() {
+            var is_foreground = (num === 38);
+            if (nums.length >= 1) {
+              var mode = nums.shift();
+              if (mode === '5' && nums.length >= 1) { // palette color
+                var palette_index = parseInt(nums.shift());
+                if (palette_index >= 0 && palette_index <= 255) {
+                  if (!use_classes) {
+                    if (!PALETTE_COLORS) {
+                      self.setup_palette.call(self);
+                    }
+                    if (is_foreground) {
+                      self.fg = PALETTE_COLORS[palette_index];
+                    } else {
+                      self.bg = PALETTE_COLORS[palette_index];
+                    }
+                  } else {
+                    var klass = (palette_index >= 16)
+                          ? ('ansi-palette-' + palette_index)
+                          : ANSI_COLORS[palette_index > 7 ? 1 : 0][palette_index % 8]['class'];
+                    if (is_foreground) {
+                      self.fg = klass;
+                    } else {
+                      self.bg = klass;
+                    }
+                  }
+                }
+              } else if(mode === '2' && nums.length >= 3) { // true color
+                var r = parseInt(nums.shift());
+                var g = parseInt(nums.shift());
+                var b = parseInt(nums.shift());
+                if ((r >= 0 && r <= 255) && (g >= 0 && g <= 255) && (b >= 0 && b <= 255)) {
+                  var color = r + ', ' + g + ', ' + b;
+                  if (!use_classes) {
+                    if (is_foreground) {
+                      self.fg = color;
+                    } else {
+                      self.bg = color;
+                    }
+                  } else {
+                    if (is_foreground) {
+                      self.fg = 'ansi-truecolor';
+                      self.fg_truecolor = color;
+                    } else {
+                      self.bg = 'ansi-truecolor';
+                      self.bg_truecolor = color;
+                    }
+                  }
+                }
+              }
+            }
+          })();
+        }
+      }
+
+      if ((self.fg === null) && (self.bg === null)) {
+        return orig_txt;
+      } else {
+        var styles = [];
+        var classes = [];
+        var data = {};
+        var render_data = function (data) {
+          var fragments = [];
+          var key;
+          for (key in data) {
+            if (data.hasOwnProperty(key)) {
+              fragments.push('data-' + key + '="' + this.escape_for_html(data[key]) + '"');
+            }
+          }
+          return fragments.length > 0 ? ' ' + fragments.join(' ') : '';
+        };
+
+        if (self.fg) {
+          if (use_classes) {
+            classes.push(self.fg + "-fg");
+            if (self.fg_truecolor !== null) {
+              data['ansi-truecolor-fg'] = self.fg_truecolor;
+              self.fg_truecolor = null;
+            }
+          } else {
+            styles.push("color:rgb(" + self.fg + ")");
+          }
+        }
+        if (self.bg) {
+          if (use_classes) {
+            classes.push(self.bg + "-bg");
+            if (self.bg_truecolor !== null) {
+              data['ansi-truecolor-bg'] = self.bg_truecolor;
+              self.bg_truecolor = null;
+            }
+          } else {
+            styles.push("background-color:rgb(" + self.bg + ")");
+          }
+        }
+        if (use_classes) {
+          return '<span class="' + classes.join(' ') + '"' + render_data.call(self, data) + '>' + orig_txt + '</span>';
+        } else {
+          return '<span style="' + styles.join(';') + '"' + render_data.call(self, data) + '>' + orig_txt + '</span>';
+        }
+      }
+    };
+
+    // Module exports
+    ansi_up = {
+
+      escape_for_html: function (txt) {
+        var a2h = new Ansi_Up();
+        return a2h.escape_for_html(txt);
+      },
+
+      linkify: function (txt) {
+        var a2h = new Ansi_Up();
+        return a2h.linkify(txt);
+      },
+
+      ansi_to_html: function (txt, options) {
+        var a2h = new Ansi_Up();
+        return a2h.ansi_to_html(txt, options);
+      },
+
+      ansi_to_text: function (txt) {
+        var a2h = new Ansi_Up();
+        return a2h.ansi_to_text(txt);
+      },
+
+      ansi_to_html_obj: function () {
+        return new Ansi_Up();
+      }
+    };
+
+    // CommonJS module is defined
+    if (hasModule) {
+        module.exports = ansi_up;
+    }
+    /*global ender:false */
+    if (typeof window !== 'undefined' && typeof ender === 'undefined') {
+        window.ansi_up = ansi_up;
+    }
+    /*global define:false */
+    if (typeof define === "function" && define.amd) {
+        define("ansi_up", [], function () {
+            return ansi_up;
+        });
+    }
+})(Date);
+
+
+
+/* ---- /157iuNRDp8x6ySz6fAamvxpv8zxE7RPsrS/js/lib/mud.js ---- */
+
+
+//comes from webtelnet
+function convertToColor(buf) {
+  // now we send utf8 string instead of utf8 array
+  // var data = new Uint8Array(buf);
+  // var str = binayUtf8ToString(data, 0);
+  var str = buf;
+
+  var lines = str.split('\r\n');
+
+  var result=[];
+  for(var i=0; i<lines.length; i++) {
+    var line = lines[i].replace(/\s\s/g, '&nbsp;');
+    if(i < lines.length-1) line += '<br/>';
+
+    // replace the prompt "> " with a empty line
+    var len = line.length;
+    if(len>=2 && line.substr(len-2) == '> ') line = line.substr(0, line-2) + '<br/>';
+
+    line = ansi_up.ansi_to_html(line);
+
+    result.push(line);
+  }
+
+  return result;
+}
+
+function adjustLayout() {
+  var w = $(window).width(), h = $(window).height();
+  var w0 = $('div#cmd').width();
+  var w1 = $('button#send').outerWidth(true);
+  var w2 = $('button#clear').outerWidth(true);
+  $('input#cmd').css({
+    width: (w0 - (w1+w2+14)) + 'px',
+  });
+  var h0 = $('div#cmd').outerHeight(true);
+  $('div#out').css({
+    width: (w-2) + 'px',
+    height: (h - h0 -200) + 'px',
+  });
+}
+
+
+
+
+
+/* ---- /157iuNRDp8x6ySz6fAamvxpv8zxE7RPsrS/js/utils/Class.coffee ---- */
 
 
 (function() {
@@ -181,7 +562,7 @@
 }).call(this);
 
 
-/* ---- /16mQo7Q449ZHkqjjqJeP7dXM3xnEuczxsr/js/utils/Follow.coffee ---- */
+/* ---- /157iuNRDp8x6ySz6fAamvxpv8zxE7RPsrS/js/utils/Follow.coffee ---- */
 
 
 (function() {
@@ -341,7 +722,7 @@
 }).call(this);
 
 
-/* ---- /16mQo7Q449ZHkqjjqJeP7dXM3xnEuczxsr/js/utils/Menu.coffee ---- */
+/* ---- /157iuNRDp8x6ySz6fAamvxpv8zxE7RPsrS/js/utils/Menu.coffee ---- */
 
 
 (function() {
@@ -420,7 +801,7 @@
 }).call(this);
 
 
-/* ---- /16mQo7Q449ZHkqjjqJeP7dXM3xnEuczxsr/js/utils/Text.coffee ---- */
+/* ---- /157iuNRDp8x6ySz6fAamvxpv8zxE7RPsrS/js/utils/Text.coffee ---- */
 
 
 (function() {
@@ -454,7 +835,7 @@
 }).call(this);
 
 
-/* ---- /16mQo7Q449ZHkqjjqJeP7dXM3xnEuczxsr/js/utils/Time.coffee ---- */
+/* ---- /157iuNRDp8x6ySz6fAamvxpv8zxE7RPsrS/js/utils/Time.coffee ---- */
 
 
 (function() {
@@ -516,7 +897,7 @@
 }).call(this);
 
 
-/* ---- /16mQo7Q449ZHkqjjqJeP7dXM3xnEuczxsr/js/ZeroChat.coffee ---- */
+/* ---- /157iuNRDp8x6ySz6fAamvxpv8zxE7RPsrS/js/ZeroChat.coffee ---- */
 
 
 (function() {
@@ -533,6 +914,14 @@
       this.sendMessage = bind(this.sendMessage, this);
       this.selectUser = bind(this.selectUser, this);
       this.setSiteInfo = bind(this.setSiteInfo, this);
+      this.sendRequest = bind(this.sendRequest, this);
+      this.writeFinishCallback = bind(this.writeFinishCallback, this);
+      this.initRequest = bind(this.initRequest, this);
+      this.siteInit = bind(this.siteInit, this);
+      this.writeData = bind(this.writeData, this);
+      this.receiveResponse = bind(this.receiveResponse, this);
+      this.renderResponse = bind(this.renderResponse, this);
+      this.checkUser = bind(this.checkUser, this);
       return ZeroChat.__super__.constructor.apply(this, arguments);
     }
 
@@ -543,29 +932,130 @@
       $.when(this.event_site_info).done((function(_this) {
         return function() {
           _this.log("event site info");
-          return _this.initFollowButton();
+          return _this.checkUser();
         };
       })(this));
-      return this.addLine("inited!");
+      return this.setLine("inited!");
+    };
+
+    ZeroChat.prototype.checkUser = function() {
+      if (this.site_info.cert_user_id) {
+        this.myDataPath = "data/users/" + this.site_info.auth_address + "/data.json";
+        this.siteInit();
+        return;
+      }
+      return this.cmd("certSelect", [["zeroid.bit"]]);
+    };
+
+    ZeroChat.prototype.renderResponse = function(response) {
+      var dom, out;
+      out = $('div#out');
+      dom = $.parseHTML(response);
+      return out.html($("body", dom));
+    };
+
+    ZeroChat.prototype.receiveResponse = function(required) {
+      this.log("trying to get my pusher's data ", this.myPusherPath);
+      return this.cmd("fileGet", {
+        "inner_path": this.myPusherPath,
+        "required": required
+      }, (function(_this) {
+        return function(push_data) {
+          var myResponse, pushMessages;
+          _this.log("my pusher's data " + _this.myPusherPath + " getted");
+          pushMessages = JSON.parse(push_data);
+          myResponse = pushMessages.response[_this.site_info.auth_address];
+          if (!myResponse) {
+            _this.log("server didn't response to me yet");
+            return _this.initRequest();
+          } else {
+            _this.log("site have my previous response");
+            return _this.renderResponse(myResponse);
+          }
+        };
+      })(this));
+    };
+
+    ZeroChat.prototype.writeData = function(callback) {
+      var json_raw;
+      json_raw = unescape(encodeURIComponent(JSON.stringify(this.myData, void 0, '\t')));
+      return this.cmd("fileWrite", [this.myDataPath, btoa(json_raw)], callback);
+    };
+
+    ZeroChat.prototype.siteInit = function() {
+      this.log("getting push_map.json");
+      return this.cmd("fileGet", {
+        "inner_path": "data/push_map.json"
+      }, (function(_this) {
+        return function(push_map_json) {
+          var pushMap;
+          pushMap = JSON.parse(push_map_json);
+          _this.log("push_map.json getted", pushMap);
+          _this.myPusherAuthAddress = pushMap.pusher[0];
+          _this.myPusherPath = "data/users/" + _this.myPusherAuthAddress + "/data.json";
+          _this.receiveResponse(false);
+          _this.log("trying to get my data:", _this.myDataPath);
+          return _this.cmd("fileGet", {
+            "inner_path": _this.myDataPath,
+            "required": false
+          }, function(my_data) {
+            if (my_data) {
+              _this.myData = JSON.parse(my_data);
+              return _this.log("my data ", _this.myData);
+            } else {
+              _this.log("no my data, create new");
+              return _this.initRequest();
+            }
+          });
+        };
+      })(this));
+    };
+
+    ZeroChat.prototype.initRequest = function() {
+      this.log("init request");
+      this.myData.request = "www.google.com";
+      return this.sendRequest();
+    };
+
+    ZeroChat.prototype.writeFinishCallback = function(res) {
+      if (res === "ok") {
+        this.log("write ok");
+        return this.cmd("sitePublish", {
+          "inner_path": this.myDataPath
+        }, (function(_this) {
+          return function(res) {
+            if (res === 'ok') {
+              _this.log("publish ok");
+              document.getElementById("message").disabled = false;
+              return document.getElementById("message").focus();
+            } else {
+              return _this.log("publish failed");
+            }
+          };
+        })(this));
+      } else {
+        this.cmd("wrapperNotification", ["error", "File write error: " + res]);
+        return document.getElementById("message").disabled = false;
+      }
+    };
+
+    ZeroChat.prototype.sendRequest = function() {
+      return this.writeData(this.writeFinishCallback);
     };
 
     ZeroChat.prototype.setSiteInfo = function(site_info) {
+      this.log("site_info", site_info);
       this.site_info = site_info;
       return this.event_site_info.resolve(site_info);
     };
 
-    ZeroChat.prototype.initFollowButton = function() {
-      this.follow = new Follow($(".feed-follow"));
-      this.follow.addFeed("留言", "SELECT 'message' AS type, message.date_added/1000 AS date_added, keyvalue.value AS title, message.body AS body, '/'  AS url FROM message LEFT JOIN json USING (json_id) LEFT JOIN json AS json_content ON (json_content.directory = json.directory AND json_content.file_name='content.json') LEFT JOIN keyvalue ON (keyvalue.json_id = json_content.json_id AND key = 'cert_user_id')", true);
-      return this.follow.init();
-    };
-
     ZeroChat.prototype.selectUser = function() {
-      Page.cmd("certSelect", [["zeroid.bit", "zeroverse.bit"]]);
+      Page.cmd("certSelect", [["zeroid.bit"]]);
       return false;
     };
 
     ZeroChat.prototype.route = function(cmd, message) {
+      var ref;
       if (cmd === "setSiteInfo") {
         if (message.params.cert_user_id) {
           document.getElementById("select_user").innerHTML = message.params.cert_user_id;
@@ -573,8 +1063,8 @@
           document.getElementById("select_user").innerHTML = "Select user";
         }
         this.setSiteInfo(message.params);
-        if (message.params.event[0] === "file_done") {
-          return this.loadMessages();
+        if (((ref = this.site_info.event) != null ? ref[0] : void 0) === "file_done" && this.site_info.event[1] === ("data/users/" + this.myPusherAuthAddress + "/data.json")) {
+          return this.receiveResponse(true);
         }
       } else {
         return this.log(cmd, message);
@@ -582,87 +1072,17 @@
     };
 
     ZeroChat.prototype.sendMessage = function() {
-      var inner_path;
       if (!Page.site_info.cert_user_id) {
-        Page.cmd("wrapperNotification", ["info", "Please, select your account."]);
-        return false;
+        Page.cmd("wrapperNotification", ["info", "you must login first to play this game"]);
+        return;
       }
-      document.getElementById("message").disabled = true;
-      inner_path = "data/users/" + this.site_info.auth_address + "/data.json";
-      this.cmd("fileGet", {
-        "inner_path": inner_path,
-        "required": false
-      }, (function(_this) {
-        return function(data) {
-          var json_raw;
-          if (data) {
-            data = JSON.parse(data);
-          } else {
-            data = {
-              "message": []
-            };
-          }
-          data.message.push({
-            "body": document.getElementById("message").value,
-            "date_added": +(new Date)
-          });
-          json_raw = unescape(encodeURIComponent(JSON.stringify(data, void 0, '\t')));
-          return _this.cmd("fileWrite", [inner_path, btoa(json_raw)], function(res) {
-            if (res === "ok") {
-              return _this.cmd("sitePublish", {
-                "inner_path": inner_path
-              }, function(res) {
-                document.getElementById("message").disabled = false;
-                document.getElementById("message").value = "";
-                document.getElementById("message").focus();
-                return _this.loadMessages();
-              });
-            } else {
-              _this.cmd("wrapperNotification", ["error", "File write error: " + res]);
-              return document.getElementById("message").disabled = false;
-            }
-          });
-        };
-      })(this));
-      return false;
+      $("#message").disabled = true;
+      this.myData.request = $("#message")[0].value;
+      return this.sendRequest();
     };
 
-    ZeroChat.prototype.loadMessages = function(mode) {
-      var query;
-      if (mode == null) {
-        mode = "normal";
-      }
-      query = "SELECT message.*, keyvalue.value AS cert_user_id FROM message\nLEFT JOIN json AS data_json USING (json_id)\nLEFT JOIN json AS content_json ON (\n    data_json.directory = content_json.directory AND content_json.file_name = 'content.json'\n)\nLEFT JOIN keyvalue ON (keyvalue.key = 'cert_user_id' AND keyvalue.json_id = content_json.json_id)\nORDER BY date_added DESC";
-      if (mode !== "nolimit") {
-        query += " LIMIT 60";
-      }
-      this.cmd("dbQuery", [query], (function(_this) {
-        return function(messages) {
-          var added, body, i, len, message, message_lines;
-          document.getElementById("messages").innerHTML = "";
-          message_lines = [];
-          for (i = 0, len = messages.length; i < len; i++) {
-            message = messages[i];
-            if (message.date_added > (+(new Date)) + 60 * 3) {
-              continue;
-            }
-            body = message.body.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            added = new Date(message.date_added);
-            message_lines.push("<li><small title='" + added + "'>" + (Time.since(message.date_added / 1000)) + "</small> <b style='color: " + (Text.toColor(message.cert_user_id)) + "'>" + (message.cert_user_id.replace('@zeroid.bit', '')) + "</b>: " + body + "</li>");
-          }
-          if (mode !== "nolimit") {
-            message_lines.push("<li><a href='#More' onclick='this.style.opacity = 0.4; return Page.loadMessages(\"nolimit\"); '>Load more messages...</a></li>");
-          }
-          return document.getElementById("messages").innerHTML = message_lines.join("\n");
-        };
-      })(this));
-      return false;
-    };
-
-    ZeroChat.prototype.addLine = function(line) {
-      var messages;
-      messages = document.getElementById("messages");
-      return messages.innerHTML = ("<li>" + line + "</li>") + messages.innerHTML;
+    ZeroChat.prototype.setLine = function(line) {
+      return document.title = line;
     };
 
     ZeroChat.prototype.onOpenWebsocket = function(e) {
@@ -674,12 +1094,16 @@
           }
         };
       })(this));
-      this.cmd("serverInfo", {}, (function(_this) {
+      this.log("get server info");
+      return this.cmd("serverInfo", {}, (function(_this) {
         return function(ret) {
-          return _this.server_info = ret;
+          _this.log("server info getted", ret);
+          _this.server_info = ret;
+          if (_this.server_info.rev < 160) {
+            _this.cmd("wrapperNotification", ["error", "requires at least ZeroNet 0.3.0 Please upgade!"]);
+          }
         };
       })(this));
-      return this.loadMessages();
     };
 
     return ZeroChat;
