@@ -61,7 +61,6 @@ class ZeroChat extends ZeroFrame
       @myPusherAuthAddress=pushMap.pusher[0]
       @myPusherPath = "data/users/#{@myPusherAuthAddress}/data.json"
 
-      @receiveResponse(false)
 
       @log "trying to get my data:",@myDataPath
 
@@ -71,6 +70,7 @@ class ZeroChat extends ZeroFrame
         if my_data
           @myData= JSON.parse(my_data)
           @log "my data ",@myData
+          @receiveResponse(false)
         else
           @log "no my data, create new"
           @initRequest()
