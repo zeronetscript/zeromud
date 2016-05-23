@@ -23,8 +23,13 @@ class ZeroChat extends ZeroFrame
 
   renderResponse:(response)=>
     out = $('div#out')
-    dom = $.parseHTML(response)
-    out.html($("body",dom))
+    dom=$.parseHTML(response)
+    result=""
+    for d in dom
+      thisDom = $(d)
+      $("script",thisDom).remove()
+      result+=thisDom[0].outerHTML
+    out.html(result)
 
 
   receiveResponse:(required)=>
